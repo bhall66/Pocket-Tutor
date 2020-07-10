@@ -2,7 +2,7 @@
 
    Author:  Bruce Hall, W8BH
      Date:  17 Jun 2020
-  Purpose:  Test Basic MorseTutor Inputs/Outputs
+  Purpose:  Test Basic PocketTutor Inputs/Outputs
             
     Notes:  At most basic level, this is a blink
             sketch which double-blinks the onboard LED
