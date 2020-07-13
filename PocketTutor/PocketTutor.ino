@@ -1,7 +1,7 @@
 /**************************************************************************
        Title:   Pocket Tutor
       Author:   Bruce E. Hall, w8bh.net
-        Date:   10 July 2020
+        Date:   13 July 2020
     Hardware:   STM32F103C, 3.2" ILI9341 TFT display
     Software:   Arduino IDE 1.8.10; STM32 support via dan.drown.org
        Legal:   Copyright (c) 2020  Bruce E. Hall.
@@ -1571,6 +1571,26 @@ int subMenu(char *menu[], int itemCount)          // Display drop-down menu & re
 
 //================================  Battery Monitor ================================
 
+void soundAlarm()
+// generate an alarm tone, one second in duration
+{
+  const int hiTone=2000, loTone=1000,            // set alarm pitch here
+    duration=80, cycles=6;                       // time = 2*cycles*duration = 0.96s
+  for (int i=0; i<cycles; i++)                   
+  {
+    tone(AUDIO,hiTone); delay(duration);         // alternate between hi-pitch tone
+    tone(AUDIO,loTone); delay(duration);         // and low-pitch tone
+  }
+  noTone(AUDIO);                                 // silence alarm when done
+}
+
+void lowBatteryWarning()
+{
+  setBrightness(0);                               // blank screen for visual effect
+  soundAlarm();                                   // audibly alert user
+  setBrightness(brightness);                      // resume normal brightness
+}
+
 float getBatteryVoltage()
 // analog input is qualtized in 4096 steps, with value of 4096 = 3.3V
 // therefore, voltage input = (reading/4096)*3.3 = reading/1241
@@ -1621,6 +1641,7 @@ void drawBatteryIcon(float v)
   tft.print('v');
   tft.setTextSize(2);                              // restore usual text size & color
   tft.setTextColor(textColor);
+  if (level==0) lowBatteryWarning();               // tell user its time to charge up
 }
 
 void checkBatteryTimer()
