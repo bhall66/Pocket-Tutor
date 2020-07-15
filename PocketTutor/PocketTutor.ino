@@ -1219,7 +1219,7 @@ void useDefaults()                                // if things get messed up...
   brightness  = 100;
   textColor   = TEXTCOLOR;
   bgColor     = BG;
-  startItem   = 0;
+  startItem   = -1;
   saveConfig();
   roger();
 }
@@ -1891,11 +1891,11 @@ void setup()
 void loop()
 {
   int selection = startItem;                      // start with user specified startup screen
-  if (!inStartup || (startItem<0))                // but if there isn't one                 
+  if (!inStartup || (startItem<0))                // but, if there isn't one,                 
     selection = getMenuSelection();               // get menu selection from user instead
   inStartup = false;                              // reset startup flag
-  showSelection(selection);
-  newScreen();                                    // clear screen below menu
+  showSelection(selection);                       // display users selection at top of screen
+  newScreen();                                    // and clear the screen below it.
   button_pressed = false;                         // reset flag for new presses
   randomSeed(millis());                           // randomize!
   score=0; hits=0; misses=0;                      // restart score for copy challenges  
