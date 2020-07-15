@@ -1,7 +1,7 @@
 /**************************************************************************
        Title:   Pocket Tutor
       Author:   Bruce E. Hall, w8bh.net
-        Date:   13 July 2020
+        Date:   15 July 2020
     Hardware:   STM32F103C, 3.2" ILI9341 TFT display
     Software:   Arduino IDE 1.8.10; STM32 support via dan.drown.org
        Legal:   Copyright (c) 2020  Bruce E. Hall.
@@ -69,6 +69,7 @@
 #define WHITE          0xFFFF
 #define DKGREEN        0x03E0
 #define GRAY           0x5AEB
+#define ORANGE         0xF540
 
 // ==================================  Menu Constants ===================================
 #define DISPLAYWIDTH      320                     // Number of LCD pixels in long-axis
@@ -80,7 +81,7 @@
 #define MAXCOL   DISPLAYWIDTH/COLSPACING          // Number of characters per row    
 #define MAXROW  (DISPLAYHEIGHT-TOPMARGIN)/ROWSPACING  // Number of text-rows per screen
 #define FG              GREEN                     // Menu foreground color 
-#define BG              BLACK                     // Menu background color
+#define BG              BLACK                     // App background color
 #define SELECTFG         BLUE                     // Selected Menu foreground color
 #define SELECTBG        WHITE                     // Selected Menu background color
 #define TEXTCOLOR      YELLOW                     // Default non-menu text color
@@ -204,9 +205,11 @@ bool ditRequest = false;                          // dit memory for iambic sendi
 bool dahRequest = false;                          // dah memory for iambic sending
 bool inStartup  = true;                           // startup flag
 char myCall[10] = "W8BH";
-int textColor   = TEXTCOLOR;
-int brightness;                                   // backlight level (range 0-100%)
+int textColor   = TEXTCOLOR;                      // foreground (text) color
+int bgColor     = BG;                             // background (screen) color
+int brightness  = 100;                            // backlight level (range 0-100%)
 int startItem   = 0;                              // startup activity.  0 = main menu
+
 
 
 //===================================  Menu Variables ===================================
@@ -495,17 +498,11 @@ void checkPause()
 
 //===================================  Koch Method  =====================================
 
-void setTopMenu(char *str)                        // erase menu & replace with new text
-{
-  tft.fillRect(0,0,DISPLAYWIDTH,ROWSPACING,BLACK); 
-  showMenuItem(str,0,0,FG,BG);                    
-}
-
 void sendKochLesson(int lesson)                   // send letter/number groups...
 { 
   const int maxCount = 175;                       // full screen = 20 x 9
   int charCount = 0;
-  eraseMenus();                                   // start with empty screen
+  newScreen();                                    // start with empty screen
   while (!button_pressed && 
   (charCount < maxCount))                         // full screen = 1 lesson 
   {                            
@@ -521,7 +518,7 @@ void sendKochLesson(int lesson)                   // send letter/number groups..
 
 void introLesson(int lesson)                      // helper fn for getLessonNumber()
 {
-  eraseMenus();                                   // start with clean screen
+  newScreen();                                    // start with clean screen
   tft.print("You are in lesson ");
   tft.println(lesson);                            // show lesson number
   tft.println("\nCharacters: ");                  
@@ -742,7 +739,7 @@ int getFileList  (char list[][FNAMESIZE])         // gets list of files on SD ca
 void displayFiles(char menu[][FNAMESIZE], int top, int itemCount)
 {
   int x = 30;                                     // x-coordinate of this menu
-  eraseMenus();                                   // clear screen below menu
+  newScreen();                                    // clear screen below menu
   for (int i = 0; i < MAXROW; i++)                // for all items in the frame
   {
      int y = TOPMARGIN + i*ROWSPACING;            // calculate y coordinate
@@ -798,7 +795,7 @@ int fileMenu(char menu[][FNAMESIZE], int itemCount) // Display list of files & g
 void sendFile(char* filename)                     // output a file to screen & morse
 {
   const int pageSkip = 250;                       // number of characters to skip, if asked to
-  eraseMenus();                                   // clear screen below menu
+  newScreen();                                    // clear screen below menu
   button_pressed = false;                         // reset flag for new presses
   File book = SD.open(filename);                  // look for book on sd card
   if (book) {                                     // find it? 
@@ -1044,7 +1041,7 @@ void mimic1(char *text)
   else score = 0;                                 // no, so reset score to 0
   showScore();                                    // display score for user
   delay(FLASHCARDDELAY);                          // wait between attempts
-  eraseMenus();                                   // erase screen for next attempt
+  newScreen();                                    // erase screen for next attempt
 }
 
 void showHitsAndMisses(int hits, int misses)      // helper fn for mimic2()
@@ -1129,7 +1126,7 @@ void flashcards()
      tft.setCursor(120,70);
      tft.print(char('!'+index));                  // show the answer
      delay(FLASHCARDDELAY);                       // wait a little
-     eraseMenus();                                // and start over.
+     newScreen();                                 // and start over.
   }
 }
 
@@ -1152,9 +1149,10 @@ void saveConfig()
   for (int i=0; i<10; i++)                        // save callsign,
     EEPROM.update(8+i,myCall[i]);                 // one letter at a time
   EEPROM.update(18,keyerMode);                    // save keyer mode (1=A, 2=B)
-  EEPROM.update(19,brightness);                   // save screen brightness
-  EEPROM.update(20,textColor);                    // save text color
+  EEPROM.update(19,textColor);                    // save text color
+  EEPROM.update(20,bgColor);                      // save background color
   EEPROM.update(21,startItem);                    // save startup activity
+  EEPROM.update(22,brightness);                   // save screen brightness
 }
 
 void loadConfig()
@@ -1172,9 +1170,10 @@ void loadConfig()
      for (int i=0; i<10; i++)
        myCall[i] = EEPROM.read(8+i); 
      keyerMode   = EEPROM.read(18);
-     brightness  = EEPROM.read(19);
-     textColor   = EEPROM.read(20);
+     textColor   = EEPROM.read(19);
+     bgColor     = EEPROM.read(20);
      startItem   = EEPROM.read(21);
+     brightness  = EEPROM.read(22);
      checkConfig();                               // ensure loaded settings are valid
   } 
 }
@@ -1199,7 +1198,9 @@ void checkConfig()                                // ensure config settings are 
     brightness=100;                               // validate screen brightness
   if ((textColor<0)||(textColor>0xFFFF))
     textColor = YELLOW;                           // validate text color
-  if ((startItem<-1)||(startItem>29))
+  if ((bgColor<0)||(bgColor>0xFFFF))
+    bgColor = BLACK;                              // validate text color
+  if ((startItem<-1)||(startItem>27))
     startItem = -1;                               // validate startup screen
 }
 
@@ -1217,37 +1218,52 @@ void useDefaults()                                // if things get messed up...
   keyerMode   = IAMBIC_B;
   brightness  = 100;
   textColor   = TEXTCOLOR;
+  bgColor     = BG;
   startItem   = 0;
   saveConfig();
   roger();
 }
 
+char *ltrim(char *str) {                          // quick n' dirty trim routine
+  while (*str==' ') str++;                        // dangerous but efficient
+  return str;
+}
+
+void selectionString(int choice, char *str)       // return menu item in str
+{
+  strcpy(str,"");
+  if (choice<0) return;                           // validate input value      
+  int i = choice/10;                              // get menu from selection
+  int j = choice%10;                              // get menu item from selection
+  switch (i) 
+  {
+    case 0: strcpy(str,ltrim(menu0[j])); break;   // show choice from menu0
+    case 1: strcpy(str,ltrim(menu1[j])); break;   // show choice from menu1
+    case 2: strcpy(str,ltrim(menu2[j])); break;   // show choice from menu2
+    default: ;                                    // oopsie
+  }
+}
+
 void showMenuChoice(int choice)
 {
-  const int x=180,y=120;                          // screen posn for startup display
-  tft.fillRect(x,y,130,32,BLACK);                 // erase any prior entry
+  char str[10];
+  const int x=180,y=40;                           // screen posn for startup display
+  tft.fillRect(x,y,130,32,bgColor);               // erase any prior entry
   tft.setCursor(x,y);
   if (choice<0) tft.print("Main Menu");            
   else {
-    int i = choice/10;                            // get top menu from selection
-    int j = choice%10;                            // get menu item from selection
-    tft.println(mainMenu[i]);                     // show top menu choice on line 1
+    tft.println(ltrim(mainMenu[choice/10]));      // show top menu choice on line 1
     tft.setCursor(x,y+16);                        // go to next line
-    switch (i) 
-    {
-      case 0: tft.println(menu0[j]); break;       // show choice from menu0
-      case 1: tft.println(menu1[j]); break;       // show choice from menu1
-      case 2: tft.println(menu2[j]); break;       // show choice from menu2
-      default: ;                                  // oopsie
-    }
+    selectionString(choice,str);                  // get menu item
+    tft.print(str);                               // and show it
   }
 }
 
 void changeStartup()                              // choose startup activity
 {
-  const int LASTITEM = 28;                        // currenly 28 choices
+  const int LASTITEM = 27;                        // currenly 27 choices
   tft.setTextSize(2);
-  tft.println("\n\n\nStartup:");
+  tft.println("\nStartup:");
   int i = startItem;
   if ((i<0)||(i>LASTITEM)) i=-1;                  // dont wig out on bad value
   showMenuChoice(i);                              // show current startup choice
@@ -1257,24 +1273,48 @@ void changeStartup()                              // choose startup activity
     int dir = readEncoder();
     if (dir!=0)                                   // user rotated encoder knob:
     {
-      i += dir;                                   // change color up/down
-      i = constrain(i,-1,LASTITEM);               // keep within given colors
+      i += dir;                                   // change choice up/down
+      i = constrain(i,-1,LASTITEM);               // keep within bounds
       showMenuChoice(i);                          // display new startup choice
     }
   }
   startItem = i;                                  // update startup choice  
 }
 
+
+void changeBackground()
+{
+  const int bgColors[] = {BLACK,0x1111,0x5170,0x42C7,0x6841,0x39D0,0x084F,0x3187};
+  const int x=180,y=150;                          // screen posn for text display
+  tft.setTextSize(2);
+  tft.println("\n\n\nBackground:");
+  tft.drawRect(x-6,y-6,134,49,WHITE);             // draw box around background
+  button_pressed = false;
+  int i = 0;
+  tft.fillRect(x-5,y-5,131,46,bgColors[i]);       // show current background color
+  while (!button_pressed)
+  {
+    int dir = readEncoder();
+    if (dir!=0)                                   // user rotated encoder knob:
+    {
+      i += dir;                                   // change color up/down
+      i = constrain(i,0,ELEMENTS(bgColors)-1);    // keep within given colors
+      tft.fillRect(x-5,y-5,131,46,bgColors[i]);   // show new background color
+    }
+  }
+  bgColor = bgColors[i];                          // save background color
+}
+
 void changeTextColor()
 {
   const char sample[] = "ABCDE";
-  const int colors[] = {BLUE,RED,GREEN,CYAN,MAGENTA,YELLOW,WHITE,DKGREEN,GRAY};
-  const int x=180,y=80;                           // screen posn for speed display
+  const int colors[] = {BLUE,RED,GREEN,CYAN,MAGENTA,YELLOW,WHITE,DKGREEN,ORANGE,GRAY};
+  const int x=180,y=150;                          // screen posn for text display
   tft.setTextSize(2);
-  tft.println("\n\n\nText Color:");
+  tft.println("Text Color:");
   tft.setTextSize(4);
   tft.setCursor(x,y);
-  int i = 3;                                      // start with cyan for fun
+  int i = 3 ;                                     // start with cyan for fun
   tft.setTextColor(colors[i]);
   tft.print(sample);                              // display text in cyan
   button_pressed = false;
@@ -1286,7 +1326,7 @@ void changeTextColor()
       i += dir;                                   // change color up/down
       i = constrain(i,0,ELEMENTS(colors)-1);      // keep within given colors
       tft.setCursor(x,y);
-      tft.setTextColor(colors[i]);                // show text in new color
+      tft.setTextColor(colors[i],bgColor);        // show text in new color
       tft.print(sample);
     }
   }
@@ -1295,11 +1335,12 @@ void changeTextColor()
 
 void changeBrightness()
 {
-  const int x=180,y=40;                           // screen position
-  tft.println("\nBrightness");
+  const int x=180,y=100;                           // screen position
+  tft.println("\n\n\nBrightness:");
   tft.setTextSize(4);
   tft.setCursor(x,y);
-  tft.print(brightness);                          // show current brightness                 
+  tft.print(brightness);                          // show current brightness
+  button_pressed = false;                 
   while (!button_pressed)
   {
     int dir = readEncoder(2);
@@ -1307,7 +1348,7 @@ void changeBrightness()
     {
       brightness += dir*5;                        // so change level up/down, 5% increments
       brightness = constrain(brightness,10,100);  // stay in range
-      tft.fillRect(x,y,100,40,BLACK);             // erase old value
+      tft.fillRect(x,y,100,40,bgColor);           // erase old value
       tft.setCursor(x,y);
       tft.print(brightness);                      // and display new value
       setBrightness(brightness);                  // update screen brightness
@@ -1317,11 +1358,13 @@ void changeBrightness()
 
 void setScreen()
 {
-  changeBrightness();                             // set display brightness
-  changeTextColor();                              // set text color
   changeStartup();                                // set startup screen
+  changeBrightness();                             // set display brightness
+  changeBackground();                             // set background color
+  changeTextColor();                              // set text color
   saveConfig();                                   // save settings 
   roger();                                        // and acknowledge
+  clearScreen();
 }
 
 void setCodeSpeed()
@@ -1341,7 +1384,7 @@ void setCodeSpeed()
       charSpeed += dir;                           // ...so change speed up/down
       charSpeed = constrain(charSpeed,
         MINSPEED,MAXSPEED);
-      tft.fillRect(x,y,50,50,BLACK);              // erase old speed
+      tft.fillRect(x,y,50,50,bgColor);            // erase old speed
       tft.setCursor(x,y);
       tft.print(charSpeed);                       // and show new speed 
     }
@@ -1369,7 +1412,7 @@ void setFarnsworth()
       codeSpeed += dir;                           // ...so change speed up/down 
       codeSpeed = constrain(codeSpeed,            // dont go below minimum 
         MINSPEED,charSpeed);                      // and dont exceed charSpeed
-      tft.fillRect(x,y,50,50,BLACK);              // erase old speed
+      tft.fillRect(x,y,50,50,bgColor);            // erase old speed
       tft.setCursor(x,y);
       tft.print(codeSpeed);                       // and show new speed    
     }
@@ -1395,9 +1438,9 @@ void setExtraWordDelay()                          // add extra word spacing
       xWordSpaces += dir;                         // ...so change value up/down 
       xWordSpaces = constrain(xWordSpaces,        // stay in range 0..MAX
         0,MAXWORDSPACES);         
-      tft.fillRect(x,y,50,50,BLACK);              // erase old speed
+      tft.fillRect(x,y,50,50,bgColor);            // erase old value
       tft.setCursor(x,y);
-      tft.print(xWordSpaces);                     // and show new speed    
+      tft.print(xWordSpaces);                     // and show new value  
     }
   }                
 }
@@ -1425,7 +1468,7 @@ void setPitch()
     {
       pitch += dir*50;                            // so change pitch up/down, 50Hz increments
       pitch=constrain(pitch,MINPITCH,MAXPITCH);   // stay in range
-      tft.fillRect(x,y,100,40,BLACK);             // erase old value
+      tft.fillRect(x,y,100,40,bgColor);           // erase old value
       tft.setCursor(x,y);
       tft.print(pitch);                           // and display new value
       dit();                                      // let user hear new pitch
@@ -1502,6 +1545,47 @@ void setCallsign() {
   roger();  
 }
 
+//===================================  Screen Routines ====================================
+
+//  The screen is divided into 3 areas:  Menu, Icons, and Body
+//
+//  [------------------------------------------------------]
+//  [     Menu                                      Icons  ]
+//  [------------------------------------------------------]
+//  [                                                      ]
+//  [     Body                                             ]
+//  [                                                      ]
+//  [------------------------------------------------------]
+//
+//  "Menu" is where the main menu is displayed
+//  "Icons" is for battery icon and other special flags (30px)
+//  "Body" is the writable area of the screen  
+
+void clearMenu()
+{
+  tft.fillRect(0,0,DISPLAYWIDTH-30,ROWSPACING,bgColor);   
+}
+
+void clearBody()
+{
+  tft.fillRect(0, TOPMARGIN, DISPLAYWIDTH, DISPLAYHEIGHT, bgColor);  
+}
+
+void clearScreen()
+{
+  tft.fillScreen(bgColor);                        // fill screen with background color
+  tft.drawLine(0,TOPMARGIN-6,DISPLAYWIDTH,
+    TOPMARGIN-6, YELLOW);                         // draw horizontal menu line  
+} 
+
+void newScreen()                                  // prepare display for new text.  Menu not distrubed
+{
+  clearBody();                                    // clear screen below menu
+  tft.setTextColor(textColor,bgColor);            // set text foreground & background color
+  tft.setCursor(0,TOPMARGIN);                     // position graphics cursor
+  textRow=0; textCol=0;                           // position text cursor below the top menu
+}
+
 
 //===================================  Menu Routines ====================================
 
@@ -1521,22 +1605,14 @@ void addCharacter(char c)
      ((c==' ') && (textCol>MAXCOL-7)))            // or at a wordspace thats near end of row?
   {
     textRow++; textCol=0;                         // yes, so advance to beginning of next row
-    if (textRow >= MAXROW) eraseMenus();          // if no more rows, clear & start at top.
+    if (textRow >= MAXROW) newScreen();           // if no more rows, clear & start at top.
   }
-}
-
-void eraseMenus()                                 // clear the text portion of the display
-{
-  tft.fillRect(0, TOPMARGIN, DISPLAYWIDTH, DISPLAYHEIGHT, BLACK);
-  tft.setTextColor(textColor,BLACK);
-  tft.setCursor(0,TOPMARGIN);
-  textRow=0; textCol=0;                           // start text below the top menu
 }
 
 int getMenuSelection()                            // Display menu system & get user selection
 {
   int item;
-  eraseMenus();                                   // start with fresh screen
+  newScreen();                                    // start with fresh screen
   menuCol = topMenu(mainMenu,ELEMENTS(mainMenu)); // show horiz menu & get user choice
   switch (menuCol)                                // now show menu that user selected:
   {
@@ -1552,6 +1628,19 @@ int getMenuSelection()                            // Display menu system & get u
   return (menuCol*10 + item);                     // return user's selection
 }
 
+void setTopMenu(char *str)                        // erase menu & replace with new text
+{
+  clearMenu();
+  showMenuItem(str,0,0,FG,bgColor);                    
+}
+
+void showSelection(int choice)                    // display current activity on top menu
+{
+  char str[8];                                    // reserve room for string
+  selectionString(choice,str);                    // get menu item that user chose
+  setTopMenu(str);                                // and show it in menu bar
+}
+
 void showMenuItem(char *item, int x, int y, int fgColor, int bgColor)
 {
   tft.setTextSize(2);                             // sets menu text size
@@ -1564,14 +1653,10 @@ int topMenu(char *menu[], int itemCount)          // Display a horiz menu & retu
 {
   int index = menuCol;                            // start w/ current row
   button_pressed = false;                         // reset button flag
-
   for (int i = 0; i < itemCount; i++)             // for each item in menu                         
-    showMenuItem(menu[i],i*MENUSPACING,0,FG,BG);  // display it 
-
+    showMenuItem(menu[i],i*MENUSPACING,0,FG,bgColor);  // display it 
   showMenuItem(menu[index],index*MENUSPACING,     // highlight current item
     0,SELECTFG,SELECTBG);
-  tft.drawLine(0,TOPMARGIN-4,DISPLAYWIDTH,
-    TOPMARGIN-4, YELLOW);                         // horiz. line below menu
 
   while (!button_pressed)                         // loop for user input:
   {
@@ -1579,7 +1664,7 @@ int topMenu(char *menu[], int itemCount)          // Display a horiz menu & retu
     int dir = readEncoder();                      // check encoder
     if (dir) {                                    // did it move?
       showMenuItem(menu[index],index*MENUSPACING,
-        0, FG,BG);                                // deselect current item
+        0, FG,bgColor);                           // deselect current item
       index += dir;                               // go to next/prev item
       if (index > itemCount-1) index=0;           // dont go beyond last item
       if (index < 0) index = itemCount-1;         // dont go before first item
@@ -1599,7 +1684,7 @@ int subMenu(char *menu[], int itemCount)          // Display drop-down menu & re
   for (int i = 0; i < itemCount; i++)             // for all items in the menu...
   {
      y = TOPMARGIN + i*ROWSPACING;                // calculate y coordinate
-     showMenuItem(menu[i],x,y,FG,BG);             // and show the item.
+     showMenuItem(menu[i],x,y,FG,bgColor);        // and show the item.
   }
   showMenuItem(menu[index],x,TOPMARGIN,           // highlight selected item
     SELECTFG,SELECTBG);
@@ -1610,7 +1695,7 @@ int subMenu(char *menu[], int itemCount)          // Display drop-down menu & re
     if (dir)                                      // it moved!    
     {
       y = TOPMARGIN + index*ROWSPACING;           // calc y-coord of current item
-      showMenuItem(menu[index],x,y,FG,BG);        // deselect current item
+      showMenuItem(menu[index],x,y,FG,bgColor);   // deselect current item
       index += dir;                               // go to next/prev item
       if (index > itemCount-1) index=0;           // dont go past last item
       if (index < 0) index = itemCount-1;         // dont go before first item
@@ -1658,7 +1743,7 @@ int batteryLevel(float v)
 // Below 3.4V, the regulator fails to maintain a 3.3V supply and therefore
 // the returned analog value will 'stall' around 3.3V even as the voltage plummets.
 {              
-  if      (v>=3.90) return 4;                     // 4.90-4.20V or 100%
+  if      (v>=3.90) return 4;                     // 3.90-4.20V or 100%
   else if (v>=3.75) return 3;                     // 3.75-3.89V or 75%
   else if (v>=3.65) return 2;                     // 3.65-3.74V or 50%
   else if (v>=3.50) return 1;                     // 3.50-3.64v or 25%
@@ -1688,7 +1773,7 @@ void drawBatteryIcon(float v)
   }
   tft.setTextSize(1);                              // show battery voltage - really small
   tft.setTextColor(FG);                            // in menu foreground color
-  tft.fillRect(xPos,yPos+h+2, 40, 8, BG);          // erase previous data
+  tft.fillRect(xPos,yPos+h+2, 40, 8, bgColor);    // erase previous data
   tft.setCursor(xPos,yPos+h+2); 
   tft.print(v,2);                                  // display as "X.XXv"
   tft.print('v');
@@ -1708,6 +1793,8 @@ void checkBatteryTimer()
 
 
 //================================  Main Program Code ================================
+
+ 
 
 void setBrightness(int level)                     // level 0 (off) to 100 (full on)       
 {
@@ -1785,6 +1872,7 @@ void splashScreen()                               // not splashy at all!
   tft.setTextSize(2);
 }
 
+
 void setup() 
 {
   initScreen();                                   // blank screen in landscape mode
@@ -1795,7 +1883,7 @@ void setup()
   initEncoder();                                  // attach encoder interrupts
   initMorse();                                    // attach paddles & adjust speed
   delay(2000);                                    // keep splash screen on for a while
-  tft.fillScreen(BLACK);                          // then erase it.
+  clearScreen();
   setBrightness(brightness);                      // reduce brightness to desired level
 }
 
@@ -1806,7 +1894,8 @@ void loop()
   if (!inStartup || (startItem<0))                // but if there isn't one                 
     selection = getMenuSelection();               // get menu selection from user instead
   inStartup = false;                              // reset startup flag
-  eraseMenus();                                   // clear screen below menu
+  showSelection(selection);
+  newScreen();                                    // clear screen below menu
   button_pressed = false;                         // reset flag for new presses
   randomSeed(millis());                           // randomize!
   score=0; hits=0; misses=0;                      // restart score for copy challenges  
