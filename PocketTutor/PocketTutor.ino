@@ -89,7 +89,6 @@
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 HardwareTimer timer(3);                           // Need timer3 access for backlight PWM
-int brightness;                                   // backlight level (range 0-100%)
 unsigned long battTimer = BATTERYINTERVAL;        // time that battery level was last checked
 
 //===================================  Rotary Encoder Variables =========================
@@ -203,8 +202,12 @@ bool usePaddles = false;                          // if true, using paddles; if 
 bool paused     = false;                          // if true, morse output is paused
 bool ditRequest = false;                          // dit memory for iambic sending
 bool dahRequest = false;                          // dah memory for iambic sending
+bool inStartup  = true;                           // startup flag
 char myCall[10] = "W8BH";
 int textColor   = TEXTCOLOR;
+int brightness;                                   // backlight level (range 0-100%)
+int startItem   = 0;                              // startup activity.  0 = main menu
+
 
 //===================================  Menu Variables ===================================
 int  menuCol=0, textRow=0, textCol=0;
@@ -1151,6 +1154,7 @@ void saveConfig()
   EEPROM.update(18,keyerMode);                    // save keyer mode (1=A, 2=B)
   EEPROM.update(19,brightness);                   // save screen brightness
   EEPROM.update(20,textColor);                    // save text color
+  EEPROM.update(21,startItem);                    // save startup activity
 }
 
 void loadConfig()
@@ -1170,6 +1174,7 @@ void loadConfig()
      keyerMode   = EEPROM.read(18);
      brightness  = EEPROM.read(19);
      textColor   = EEPROM.read(20);
+     startItem   = EEPROM.read(21);
      checkConfig();                               // ensure loaded settings are valid
   } 
 }
@@ -1194,6 +1199,8 @@ void checkConfig()                                // ensure config settings are 
     brightness=100;                               // validate screen brightness
   if ((textColor<0)||(textColor>0xFFFF))
     textColor = YELLOW;                           // validate text color
+  if ((startItem<-1)||(startItem>29))
+    startItem = -1;                               // validate startup screen
 }
 
 void useDefaults()                                // if things get messed up...
@@ -1210,22 +1217,67 @@ void useDefaults()                                // if things get messed up...
   keyerMode   = IAMBIC_B;
   brightness  = 100;
   textColor   = TEXTCOLOR;
+  startItem   = 0;
   saveConfig();
   roger();
+}
+
+void showMenuChoice(int choice)
+{
+  const int x=180,y=120;                          // screen posn for startup display
+  tft.fillRect(x,y,130,32,BLACK);                 // erase any prior entry
+  tft.setCursor(x,y);
+  if (choice<0) tft.print("Main Menu");            
+  else {
+    int i = choice/10;                            // get top menu from selection
+    int j = choice%10;                            // get menu item from selection
+    tft.println(mainMenu[i]);                     // show top menu choice on line 1
+    tft.setCursor(x,y+16);                        // go to next line
+    switch (i) 
+    {
+      case 0: tft.println(menu0[j]); break;       // show choice from menu0
+      case 1: tft.println(menu1[j]); break;       // show choice from menu1
+      case 2: tft.println(menu2[j]); break;       // show choice from menu2
+      default: ;                                  // oopsie
+    }
+  }
+}
+
+void changeStartup()                              // choose startup activity
+{
+  const int LASTITEM = 28;                        // currenly 28 choices
+  tft.setTextSize(2);
+  tft.println("\n\n\nStartup:");
+  int i = startItem;
+  if ((i<0)||(i>LASTITEM)) i=-1;                  // dont wig out on bad value
+  showMenuChoice(i);                              // show current startup choice
+  button_pressed = false;
+  while (!button_pressed)
+  {
+    int dir = readEncoder();
+    if (dir!=0)                                   // user rotated encoder knob:
+    {
+      i += dir;                                   // change color up/down
+      i = constrain(i,-1,LASTITEM);               // keep within given colors
+      showMenuChoice(i);                          // display new startup choice
+    }
+  }
+  startItem = i;                                  // update startup choice  
 }
 
 void changeTextColor()
 {
   const char sample[] = "ABCDE";
   const int colors[] = {BLUE,RED,GREEN,CYAN,MAGENTA,YELLOW,WHITE,DKGREEN,GRAY};
-  const int x=180,y=80;                      // screen posn for speed display
+  const int x=180,y=80;                           // screen posn for speed display
   tft.setTextSize(2);
   tft.println("\n\n\nText Color:");
   tft.setTextSize(4);
   tft.setCursor(x,y);
-  tft.print(sample);                           // display text in current color
+  int i = 3;                                      // start with cyan for fun
+  tft.setTextColor(colors[i]);
+  tft.print(sample);                              // display text in cyan
   button_pressed = false;
-  int i=6;
   while (!button_pressed)
   {
     int dir = readEncoder();
@@ -1267,6 +1319,7 @@ void setScreen()
 {
   changeBrightness();                             // set display brightness
   changeTextColor();                              // set text color
+  changeStartup();                                // set startup screen
   saveConfig();                                   // save settings 
   roger();                                        // and acknowledge
 }
@@ -1701,9 +1754,9 @@ void initSD()
 
 void initEEPROM()
 {
-  EEPROM.PageBase0 = 0x801F000;                        // EEPROM starts here
+  EEPROM.PageBase0 = 0x801F000;                   // EEPROM starts here
   EEPROM.PageBase1 = 0x801F800;
-  EEPROM.PageSize  = 0x400;                            // STM32F103CB has 1K pages
+  EEPROM.PageSize  = 0x400;                       // STM32F103CB has 1K pages
   EEPROM.init();
 }
 
@@ -1728,7 +1781,8 @@ void splashScreen()                               // not splashy at all!
   tft.setTextSize(1);
   tft.setCursor(50,220);
   tft.setTextColor(WHITE);
-  tft.print("Copyright (c) 2019, Bruce E. Hall"); // legal small print
+  tft.print("Copyright (c) 2020, Bruce E. Hall"); // legal small print
+  tft.setTextSize(2);
 }
 
 void setup() 
@@ -1745,9 +1799,13 @@ void setup()
   setBrightness(brightness);                      // reduce brightness to desired level
 }
 
+
 void loop()
 {
-  int selection = getMenuSelection();             // get menu selection from user
+  int selection = startItem;                      // start with user specified startup screen
+  if (!inStartup || (startItem<0))                // but if there isn't one                 
+    selection = getMenuSelection();               // get menu selection from user instead
+  inStartup = false;                              // reset startup flag
   eraseMenus();                                   // clear screen below menu
   button_pressed = false;                         // reset flag for new presses
   randomSeed(millis());                           // randomize!
@@ -1780,5 +1838,5 @@ void loop()
     case 25: setScreen(); break;
     case 26: useDefaults(); break;
     default: ;
-  }
+  }  
 }
