@@ -204,8 +204,7 @@ void setup() {
 }
 
 void loop() { 
-  rotaryCounter = min(rotaryCounter,2000);        // set pitch max
-  rotaryCounter = max(rotaryCounter,300);         // set pitch min
+  rotaryCounter = constrain(rotaryCounter,300,2000);
   if (button_pressed) rotaryCounter = PITCH;      // reset pitch
   button_pressed = false;  
   
